@@ -1,256 +1,148 @@
-import { useMemo, useState } from "react";
+import { NavLink, Route, Routes } from "react-router-dom";
+import HomePage from "./pages/HomePage";
+import ManageCatalogItemsPage from "./pages/ManageCatalogItemsPage";
+import OrderItemsPage from "./pages/OrderItemsPage";
+import SalesOrdersPage from "./pages/SalesOrdersPage";
+import StockPage from "./pages/StockPage";
+import FeedbackPage from "./pages/FeedbackPage";
+import { docsUrl } from "./api";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
-
-function ApiResult({ data, error }) {
-  if (error) return <div className="message error">{error}</div>;
-  if (!data) return null;
-  return <pre className="message">{JSON.stringify(data, null, 2)}</pre>;
+function Icon({ children }) {
+  return (
+    <svg
+      className="nav-icon"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
 }
 
+const navItems = [
+  {
+    to: "/",
+    end: true,
+    label: "Home",
+    icon: (
+      <>
+        <path d="M3 9.5 12 3l9 6.5" />
+        <path d="M5 10v10h14V10" />
+        <path d="M9 20v-6h6v6" />
+      </>
+    ),
+  },
+  {
+    to: "/manage-catalog-items",
+    label: "Manage Catalog Items",
+    icon: (
+      <>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </>
+    ),
+  },
+  {
+    to: "/stock",
+    label: "Manage Stock",
+    icon: (
+      <>
+        <path d="M21 8V7a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 7v10a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 17" />
+        <path d="m3.3 7 8.7 5 8.7-5" />
+        <path d="M12 22V12" />
+      </>
+    ),
+  },
+  {
+    to: "/order-items",
+    label: "Order Items",
+    icon: (
+      <>
+        <circle cx="9" cy="21" r="1" />
+        <circle cx="20" cy="21" r="1" />
+        <path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6" />
+      </>
+    ),
+  },
+  {
+    to: "/sales-orders",
+    label: "Sales Orders by Date",
+    icon: (
+      <>
+        <rect x="3" y="4" width="18" height="18" rx="2" />
+        <path d="M16 2v4M8 2v4M3 10h18" />
+      </>
+    ),
+  },
+  {
+    to: "/feedback",
+    label: "Share Feedback",
+    icon: (
+      <>
+        <path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7A8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5Z" />
+      </>
+    ),
+  },
+];
+
 function App() {
-  const [catalogForm, setCatalogForm] = useState({ itemId: "", itemName: "", cost: "" });
-  const [catalogSearchId, setCatalogSearchId] = useState("");
-  const [catalogResult, setCatalogResult] = useState(null);
-  const [catalogError, setCatalogError] = useState("");
-
-  const [orderForm, setOrderForm] = useState({
-    transactionId: "",
-    transactionDateTime: "",
-    catalogItemId: "",
-    quantity: "",
-    price: "",
-  });
-  const [orderResult, setOrderResult] = useState(null);
-  const [orderError, setOrderError] = useState("");
-
-  const [orderDate, setOrderDate] = useState("");
-  const [orders, setOrders] = useState([]);
-  const [ordersError, setOrdersError] = useState("");
-
-  const salesCountText = useMemo(() => `${orders.length} order(s) loaded`, [orders]);
-
-  async function upsertCatalogItem(event) {
-    event.preventDefault();
-    setCatalogError("");
-    setCatalogResult(null);
-
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/catalog-items`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...catalogForm,
-          cost: Number(catalogForm.cost),
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Unable to save catalog item");
-      setCatalogResult(data);
-    } catch (error) {
-      setCatalogError(error.message);
-    }
-  }
-
-  async function getCatalogItem(event) {
-    event.preventDefault();
-    setCatalogError("");
-    setCatalogResult(null);
-
-    try {
-      const response = await fetch(
-        `${apiBaseUrl}/api/catalog-items/${encodeURIComponent(catalogSearchId)}`,
-      );
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Unable to fetch catalog item");
-      setCatalogResult(data);
-    } catch (error) {
-      setCatalogError(error.message);
-    }
-  }
-
-  async function createSalesOrder(event) {
-    event.preventDefault();
-    setOrderError("");
-    setOrderResult(null);
-
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/sales-orders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...orderForm,
-          quantity: Number(orderForm.quantity),
-          price: Number(orderForm.price),
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Unable to save sales order");
-      setOrderResult(data);
-    } catch (error) {
-      setOrderError(error.message);
-    }
-  }
-
-  async function loadSalesOrders(event) {
-    event.preventDefault();
-    setOrdersError("");
-
-    try {
-      const query = orderDate ? `?date=${encodeURIComponent(orderDate)}` : "";
-      const response = await fetch(`${apiBaseUrl}/api/sales-orders${query}`);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Unable to load sales orders");
-      setOrders(data);
-    } catch (error) {
-      setOrdersError(error.message);
-    }
-  }
-
   return (
-    <main className="container">
-      <h1>Sales Orders Console</h1>
-      <p className="subtitle">Modern React frontend connected to a separate backend API.</p>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="9" cy="21" r="1" />
+              <circle cx="20" cy="21" r="1" />
+              <path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6" />
+            </svg>
+          </span>
+          <span className="brand-text">
+            <span className="brand-name">Swiftcart</span>
+            <span className="brand-tag">Sales &amp; Catalog Portal</span>
+          </span>
+        </div>
 
-      <section className="grid">
-        <article className="card">
-          <h2>Upsert Catalog Item</h2>
-          <form onSubmit={upsertCatalogItem}>
-            <label>Item ID</label>
-            <input
-              value={catalogForm.itemId}
-              onChange={(e) => setCatalogForm({ ...catalogForm, itemId: e.target.value })}
-              placeholder="ITEM-1001"
-              required
-            />
-            <label>Item Name</label>
-            <input
-              value={catalogForm.itemName}
-              onChange={(e) => setCatalogForm({ ...catalogForm, itemName: e.target.value })}
-              placeholder="Bluetooth Mouse"
-              required
-            />
-            <label>Cost</label>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={catalogForm.cost}
-              onChange={(e) => setCatalogForm({ ...catalogForm, cost: e.target.value })}
-              placeholder="29.99"
-              required
-            />
-            <button type="submit">Save Catalog Item</button>
-          </form>
-          <ApiResult data={catalogResult} error={catalogError} />
-        </article>
+        <nav className="side-nav">
+          {navItems.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.end}>
+              <Icon>{item.icon}</Icon>
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+          <a href={docsUrl} target="_blank" rel="noreferrer">
+            <Icon>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+              <path d="M14 2v6h6" />
+              <path d="M8 13h8M8 17h8M8 9h2" />
+            </Icon>
+            <span>Documents</span>
+          </a>
+        </nav>
 
-        <article className="card">
-          <h2>Get Catalog Item</h2>
-          <form onSubmit={getCatalogItem}>
-            <label>Item ID</label>
-            <input
-              value={catalogSearchId}
-              onChange={(e) => setCatalogSearchId(e.target.value)}
-              placeholder="ITEM-1001"
-              required
-            />
-            <button type="submit">Fetch Catalog Item</button>
-          </form>
-          <ApiResult data={catalogResult} error={catalogError} />
-        </article>
+        <div className="sidebar-footer">React &middot; Node.js &middot; Azure MySQL</div>
+      </aside>
 
-        <article className="card">
-          <h2>Create/Update Sales Order</h2>
-          <form onSubmit={createSalesOrder}>
-            <label>Transaction ID</label>
-            <input
-              value={orderForm.transactionId}
-              onChange={(e) => setOrderForm({ ...orderForm, transactionId: e.target.value })}
-              placeholder="TXN-90001"
-              required
-            />
-            <label>Transaction Date-Time</label>
-            <input
-              type="datetime-local"
-              value={orderForm.transactionDateTime}
-              onChange={(e) => setOrderForm({ ...orderForm, transactionDateTime: e.target.value })}
-              required
-            />
-            <label>Catalog Item ID</label>
-            <input
-              value={orderForm.catalogItemId}
-              onChange={(e) => setOrderForm({ ...orderForm, catalogItemId: e.target.value })}
-              placeholder="ITEM-1001"
-              required
-            />
-            <label>Quantity</label>
-            <input
-              type="number"
-              min="1"
-              value={orderForm.quantity}
-              onChange={(e) => setOrderForm({ ...orderForm, quantity: e.target.value })}
-              required
-            />
-            <label>Price</label>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={orderForm.price}
-              onChange={(e) => setOrderForm({ ...orderForm, price: e.target.value })}
-              required
-            />
-            <button type="submit">Save Sales Order</button>
-          </form>
-          <ApiResult data={orderResult} error={orderError} />
-        </article>
-      </section>
-
-      <section className="card table-wrapper">
-        <h2>Sales Orders</h2>
-        <form onSubmit={loadSalesOrders}>
-          <label>Filter by Date (optional)</label>
-          <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
-          <button type="submit">Load Sales Orders</button>
-        </form>
-        <p className="muted">{salesCountText}</p>
-        {ordersError ? <div className="message error">{ordersError}</div> : null}
-        <table>
-          <thead>
-            <tr>
-              <th>Transaction ID</th>
-              <th>Transaction Date-Time</th>
-              <th>Date</th>
-              <th>Catalog Item ID</th>
-              <th>Item Name</th>
-              <th>Quantity</th>
-              <th>Price</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((order) => (
-              <tr key={order.transactionId}>
-                <td>{order.transactionId}</td>
-                <td>{String(order.transactionDateTime)}</td>
-                <td>{String(order.transactionDate)}</td>
-                <td>{order.catalogItemId}</td>
-                <td>{order.itemName}</td>
-                <td>{order.quantity}</td>
-                <td>{order.price}</td>
-              </tr>
-            ))}
-            {orders.length === 0 ? (
-              <tr>
-                <td colSpan="7">No sales orders found.</td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </section>
-    </main>
+      <div className="main">
+        <div className="content">
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/manage-catalog-items" element={<ManageCatalogItemsPage />} />
+            <Route path="/stock" element={<StockPage />} />
+            <Route path="/order-items" element={<OrderItemsPage />} />
+            <Route path="/sales-orders" element={<SalesOrdersPage />} />
+            <Route path="/feedback" element={<FeedbackPage />} />
+          </Routes>
+        </div>
+      </div>
+    </div>
   );
 }
 
