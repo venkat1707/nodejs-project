@@ -6,9 +6,10 @@ name: CI
 # bundle (the same steps as `npm run build:deploy`), and lints the PHP docs.
 # This is CI only — it does not deploy. Deployment lives in a separate CD workflow.
 #
-# Runner note: uses GitHub-hosted `ubuntu-latest`. If your org only allows a
-# self-hosted runner, change `runs-on: ubuntu-latest` to `runs-on: self-hosted`
-# (ensure Node 20 + PHP are available on that runner).
+# Runner note: all jobs run on a self-hosted runner (`runs-on: self-hosted`).
+# Ensure the runner has Node 20 and PHP available (or let the setup-node /
+# setup-php steps provision them). To use GitHub-hosted runners instead,
+# change `runs-on: self-hosted` to `runs-on: ubuntu-latest`.
 
 on:
   push:
@@ -27,7 +28,7 @@ permissions:
 jobs:
   build:
     name: Build & verify (Node)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Check out the code
@@ -82,7 +83,7 @@ jobs:
 
   php-docs:
     name: Lint PHP docs
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Check out the code
