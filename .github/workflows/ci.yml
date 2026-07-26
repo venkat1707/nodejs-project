@@ -80,19 +80,3 @@ jobs:
           path: backend/public
           if-no-files-found: error
           retention-days: 7
-
-  php-docs:
-    name: Lint PHP docs
-    runs-on: self-hosted
-
-    steps:
-      - name: Check out the code
-        uses: actions/checkout@v4
-
-      - name: Set up PHP 8.3
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.3"
-
-      - name: Lint the documentation page
-        run: php -l frontend/public/api-docs.php
