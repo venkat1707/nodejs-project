@@ -1,0 +1,97 @@
+name: CI
+
+# Continuous Integration for Swiftcart.
+# Runs on every push and on pull requests into main. It installs dependencies,
+# builds the React frontend, verifies the backend, assembles the deployable
+# bundle (the same steps as `npm run build:deploy`), and lints the PHP docs.
+# This is CI only — it does not deploy. Deployment lives in a separate CD workflow.
+#
+# Runner note: uses GitHub-hosted `ubuntu-latest`. If your org only allows a
+# self-hosted runner, change `runs-on: ubuntu-latest` to `runs-on: self-hosted`
+# (ensure Node 20 + PHP are available on that runner).
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & verify (Node)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ---- Frontend (React + Vite) ----
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci || npm install
+
+      - name: Lint frontend (if a lint script exists)
+        working-directory: frontend
+        run: npm run lint --if-present
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      # ---- Backend (Express) ----
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci || npm install
+
+      - name: Syntax-check backend entry point
+        working-directory: backend
+        run: node --check src/server.js
+
+      - name: Lint backend (if a lint script exists)
+        working-directory: backend
+        run: npm run lint --if-present
+
+      - name: Test backend (if a test script exists)
+        working-directory: backend
+        run: npm test --if-present
+
+      # ---- Assemble the deployable bundle (mirrors `npm run build:deploy`) ----
+      - name: Copy React build into backend/public
+        run: node scripts/copy-frontend.js
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: swiftcart-build
+          path: backend/public
+          if-no-files-found: error
+          retention-days: 7
+
+  php-docs:
+    name: Lint PHP docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+
+      - name: Lint the documentation page
+        run: php -l frontend/public/api-docs.php
