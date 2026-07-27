@@ -3,7 +3,8 @@ name: CI
 # Continuous Integration for Swiftcart.
 # Runs on every push and on pull requests into main. It installs dependencies,
 # builds the React frontend, verifies the backend, assembles the deployable
-# bundle (the same steps as `npm run build:deploy`), and lints the PHP docs.
+# bundle (the same steps as `npm run build:deploy`), and builds + lints the PHP
+# docs app (packaged as a deployable index.php).
 # This is CI only — it does not deploy. Deployment lives in a separate CD workflow.
 #
 # Runner note: all jobs run on a self-hosted runner (`runs-on: self-hosted`).
@@ -78,5 +79,36 @@ jobs:
         with:
           name: swiftcart-build
           path: backend/public
+          if-no-files-found: error
+          retention-days: 7
+
+  php-docs:
+    name: Build & lint PHP docs
+    runs-on: self-hosted
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+
+      # Verify the docs file parses cleanly.
+      - name: Lint the documentation page
+        run: php -l frontend/public/api-docs.php
+
+      # "Build" the PHP app: package the single self-contained file as the
+      # site root (index.php) exactly as the deploy steps do. `php -r` is used
+      # so the command is shell-agnostic (works on PowerShell and bash runners).
+      - name: Build the docs app (package as index.php)
+        run: php -r "@mkdir('docs-dist'); if (!copy('frontend/public/api-docs.php', 'docs-dist/index.php')) { exit(1); }"
+
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: swiftcart-docs
+          path: docs-dist
           if-no-files-found: error
           retention-days: 7
