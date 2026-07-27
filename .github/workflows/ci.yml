@@ -3,8 +3,8 @@ name: CI
 # Continuous Integration for Swiftcart.
 # Runs on every push and on pull requests into main. It installs dependencies,
 # builds the React frontend, verifies the backend, assembles the deployable
-# bundle (the same steps as `npm run build:deploy`), and builds + lints the PHP
-# docs app (packaged as a deployable index.php).
+# bundle (the same steps as `npm run build:deploy`), and builds the PHP docs
+# app (packaged as a deployable index.php), linting it when PHP is available.
 # This is CI only — it does not deploy. Deployment lives in a separate CD workflow.
 #
 # Runner note: all jobs run on a self-hosted runner (`runs-on: self-hosted`).
@@ -90,20 +90,28 @@ jobs:
       - name: Check out the code
         uses: actions/checkout@v4
 
-      - name: Set up PHP 8.3
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.3"
-
-      # Verify the docs file parses cleanly.
-      - name: Lint the documentation page
-        run: php -l frontend/public/api-docs.php
-
-      # "Build" the PHP app: package the single self-contained file as the
-      # site root (index.php) exactly as the deploy steps do. `php -r` is used
-      # so the command is shell-agnostic (works on PowerShell and bash runners).
+      # Build the PHP app: package the single self-contained file as the site
+      # root (index.php), exactly as the deploy steps do. This is a plain file
+      # copy and needs no PHP toolchain.
       - name: Build the docs app (package as index.php)
-        run: php -r "@mkdir('docs-dist'); if (!copy('frontend/public/api-docs.php', 'docs-dist/index.php')) { exit(1); }"
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path docs-dist | Out-Null
+          Copy-Item frontend/public/api-docs.php docs-dist/index.php -Force
+
+      # Lint with PHP only if a php executable is on the runner's PATH.
+      # shivammathur/setup-php is intentionally NOT used: on Windows it requires
+      # PowerShell 7 (pwsh), which is not installed on this self-hosted runner.
+      - name: Lint the documentation page (if PHP is available)
+        shell: powershell
+        run: |
+          $php = Get-Command php -ErrorAction SilentlyContinue
+          if ($php) {
+            Write-Host "Linting with $($php.Source)"
+            php -l docs-dist/index.php
+          } else {
+            Write-Host "PHP not found on PATH - skipping lint. Add php to the runner PATH (or install PowerShell 7 so setup-php can run) to enable it."
+          }
 
       - name: Upload docs artifact
         uses: actions/upload-artifact@v4
