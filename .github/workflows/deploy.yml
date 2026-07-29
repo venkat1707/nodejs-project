@@ -10,14 +10,17 @@ name: Deploy to Azure App Service
 #   AZURE_TENANT_ID        (Entra ID tenant id)
 #   AZURE_SUBSCRIPTION_ID  (subscription that hosts the App Services)
 #
-# Trigger: manual (workflow_dispatch) by default so a push does not deploy
-# unexpectedly. To enable automatic deploys on every push to main, uncomment
-# the `push:` block below.
+# Trigger: this deploy is GATED on the CI workflow. It runs automatically only
+# after the "CI" workflow completes successfully on `main` (workflow_run), and
+# deploys the exact commit that CI validated. You can also start it manually
+# (workflow_dispatch) — a manual run skips the CI-success gate on purpose.
 
 on:
   workflow_dispatch:
-  # push:
-  #   branches: [main]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
 
 # OIDC needs permission to request a federated token.
 permissions:
@@ -35,10 +38,15 @@ jobs:
   deploy-node:
     name: Deploy Node app (vt-nodeapp-01)
     runs-on: self-hosted
+    # Deploy only when triggered manually, or when the gating CI run passed.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - name: Check out the code
         uses: actions/checkout@v4
+        with:
+          # For workflow_run, check out the exact commit CI validated.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
@@ -84,10 +92,15 @@ jobs:
   deploy-php:
     name: Deploy PHP docs app (vt-phpapp-02)
     runs-on: self-hosted
+    # Deploy only when triggered manually, or when the gating CI run passed.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - name: Check out the code
         uses: actions/checkout@v4
+        with:
+          # For workflow_run, check out the exact commit CI validated.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
       # 1) Build the PHP app: package the single self-contained docs file as the
       #    site root (index.php). Plain file copy — no PHP toolchain needed.

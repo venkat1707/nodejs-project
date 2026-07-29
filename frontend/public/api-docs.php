@@ -2,11 +2,15 @@
 // Swiftcart — API documentation page (PHP).
 // Detailed reference for the Node.js/Express REST API, organized by resource.
 
-$baseUrl = 'http://localhost:4000';
+// Base URL of the Node.js/Express API that this documentation describes.
+// Set the BASE_URL App Setting (environment variable) in production; falls back
+// to the local dev server when unset.
+$baseUrl = getenv('BASE_URL') ?: 'http://localhost:4000';
 
 // The Swiftcart portal (React SPA + API) is served by the Node server at this URL.
 // The docs page runs on a separate PHP server, so the "Back" link must be absolute.
-$portalUrl = 'http://localhost:4000';
+// Set the PORTAL_URL App Setting in production; falls back to BASE_URL, then local dev.
+$portalUrl = getenv('PORTAL_URL') ?: ($baseUrl ?: 'http://localhost:4000');
 
 /*
  * Each section groups related endpoints. Every endpoint documents:
