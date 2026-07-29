@@ -80,21 +80,31 @@ jobs:
       - name: Ensure Azure CLI is available
         shell: powershell
         run: |
-          $azWbin = "C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\wbin"
-          if (Get-Command az -ErrorAction SilentlyContinue) {
-            Write-Host "Azure CLI already on PATH."
-          } elseif (Test-Path "$azWbin\az.cmd") {
-            Write-Host "Azure CLI installed but not on PATH; adding $azWbin."
-            Add-Content -Path $env:GITHUB_PATH -Value $azWbin
-          } else {
-            Write-Host "Installing Azure CLI (one-time)..."
-            $ProgressPreference = 'SilentlyContinue'
-            $msi = Join-Path $env:TEMP 'AzureCLI.msi'
-            Invoke-WebRequest -Uri https://aka.ms/installazurecliwindows -OutFile $msi
-            Start-Process msiexec.exe -Wait -ArgumentList "/I `"$msi`" /quiet /norestart"
-            Remove-Item $msi -Force
-            Add-Content -Path $env:GITHUB_PATH -Value $azWbin
+          $ErrorActionPreference = 'Stop'
+          $candidates = @(
+            "C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\wbin",
+            "C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin"
+          )
+          function Find-AzDir { foreach ($d in $candidates) { if (Test-Path (Join-Path $d 'az.cmd')) { return $d } } return $null }
+          if (Get-Command az -ErrorAction SilentlyContinue) { Write-Host "Azure CLI already on PATH."; exit 0 }
+          $dir = Find-AzDir
+          if ($dir) { Write-Host "Azure CLI found at $dir; adding to PATH."; Add-Content -Path $env:GITHUB_PATH -Value $dir; exit 0 }
+          Write-Host "Installing Azure CLI via MSI..."
+          $ProgressPreference = 'SilentlyContinue'
+          $msi = Join-Path $env:TEMP 'AzureCLI.msi'
+          $log = Join-Path $env:TEMP 'AzureCLI-install.log'
+          Invoke-WebRequest -Uri https://aka.ms/installazurecliwindows -OutFile $msi -UseBasicParsing
+          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/I `"$msi`" /quiet /norestart /l*v `"$log`""
+          Write-Host "msiexec exit code: $($p.ExitCode)"
+          Remove-Item $msi -Force -ErrorAction SilentlyContinue
+          $dir = Find-AzDir
+          if (-not $dir) {
+            Write-Host "----- Azure CLI MSI install log (tail) -----"
+            if (Test-Path $log) { Get-Content $log -Tail 30 | ForEach-Object { Write-Host $_ } }
+            throw "Azure CLI is not available and the automatic install failed (msiexec exit $($p.ExitCode)). The self-hosted runner account likely lacks admin rights. Install the Azure CLI ONCE on the runner machine from an elevated shell, then restart the runner service."
           }
+          Write-Host "Azure CLI installed at $dir; adding to PATH."
+          Add-Content -Path $env:GITHUB_PATH -Value $dir
 
       # 4) Log in to Azure with OIDC (short-lived token, no stored secret)
       - name: Azure login (OIDC)
@@ -157,21 +167,31 @@ jobs:
       - name: Ensure Azure CLI is available
         shell: powershell
         run: |
-          $azWbin = "C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\wbin"
-          if (Get-Command az -ErrorAction SilentlyContinue) {
-            Write-Host "Azure CLI already on PATH."
-          } elseif (Test-Path "$azWbin\az.cmd") {
-            Write-Host "Azure CLI installed but not on PATH; adding $azWbin."
-            Add-Content -Path $env:GITHUB_PATH -Value $azWbin
-          } else {
-            Write-Host "Installing Azure CLI (one-time)..."
-            $ProgressPreference = 'SilentlyContinue'
-            $msi = Join-Path $env:TEMP 'AzureCLI.msi'
-            Invoke-WebRequest -Uri https://aka.ms/installazurecliwindows -OutFile $msi
-            Start-Process msiexec.exe -Wait -ArgumentList "/I `"$msi`" /quiet /norestart"
-            Remove-Item $msi -Force
-            Add-Content -Path $env:GITHUB_PATH -Value $azWbin
+          $ErrorActionPreference = 'Stop'
+          $candidates = @(
+            "C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\wbin",
+            "C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin"
+          )
+          function Find-AzDir { foreach ($d in $candidates) { if (Test-Path (Join-Path $d 'az.cmd')) { return $d } } return $null }
+          if (Get-Command az -ErrorAction SilentlyContinue) { Write-Host "Azure CLI already on PATH."; exit 0 }
+          $dir = Find-AzDir
+          if ($dir) { Write-Host "Azure CLI found at $dir; adding to PATH."; Add-Content -Path $env:GITHUB_PATH -Value $dir; exit 0 }
+          Write-Host "Installing Azure CLI via MSI..."
+          $ProgressPreference = 'SilentlyContinue'
+          $msi = Join-Path $env:TEMP 'AzureCLI.msi'
+          $log = Join-Path $env:TEMP 'AzureCLI-install.log'
+          Invoke-WebRequest -Uri https://aka.ms/installazurecliwindows -OutFile $msi -UseBasicParsing
+          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/I `"$msi`" /quiet /norestart /l*v `"$log`""
+          Write-Host "msiexec exit code: $($p.ExitCode)"
+          Remove-Item $msi -Force -ErrorAction SilentlyContinue
+          $dir = Find-AzDir
+          if (-not $dir) {
+            Write-Host "----- Azure CLI MSI install log (tail) -----"
+            if (Test-Path $log) { Get-Content $log -Tail 30 | ForEach-Object { Write-Host $_ } }
+            throw "Azure CLI is not available and the automatic install failed (msiexec exit $($p.ExitCode)). The self-hosted runner account likely lacks admin rights. Install the Azure CLI ONCE on the runner machine from an elevated shell, then restart the runner service."
           }
+          Write-Host "Azure CLI installed at $dir; adding to PATH."
+          Add-Content -Path $env:GITHUB_PATH -Value $dir
 
       # 3) Log in to Azure with OIDC
       - name: Azure login (OIDC)
