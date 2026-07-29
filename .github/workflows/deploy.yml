@@ -30,6 +30,10 @@ permissions:
 env:
   NODE_WEBAPP_NAME: vt-nodeapp-01
   PHP_WEBAPP_NAME: vt-phpapp-02
+  RESOURCE_GROUP: vt-nodejs-rg
+  # Public URL of the Node app; used for the PHP docs' BASE_URL/PORTAL_URL and
+  # the Node app's own CORS FRONTEND_ORIGIN. Change if you use a custom domain.
+  NODE_APP_URL: https://vt-nodeapp-01.azurewebsites.net
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -79,6 +83,24 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # 3b) Set the runtime App Settings (environment variables) the Express app
+      #     reads from process.env. DB_* come from repository secrets (create:
+      #     DB_HOST, DB_USER, DB_PASSWORD, DB_NAME). Non-secret values are literal.
+      - name: Configure App Settings (vt-nodeapp-01)
+        shell: powershell
+        run: >
+          az webapp config appsettings set
+          --name ${{ env.NODE_WEBAPP_NAME }}
+          --resource-group ${{ env.RESOURCE_GROUP }}
+          --settings
+          DB_HOST="${{ secrets.DB_HOST }}"
+          DB_PORT="3306"
+          DB_USER="${{ secrets.DB_USER }}"
+          DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
+          DB_NAME="${{ secrets.DB_NAME }}"
+          DB_SSL="true"
+          FRONTEND_ORIGIN="${{ env.NODE_APP_URL }}"
+
       # 4) Deploy the backend folder (Express serves the API + the React build)
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
@@ -117,6 +139,18 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # 2b) Set the docs' App Settings. api-docs.php reads BASE_URL/PORTAL_URL via
+      #     getenv() and falls back to localhost only when unset.
+      - name: Configure App Settings (vt-phpapp-02)
+        shell: powershell
+        run: >
+          az webapp config appsettings set
+          --name ${{ env.PHP_WEBAPP_NAME }}
+          --resource-group ${{ env.RESOURCE_GROUP }}
+          --settings
+          BASE_URL="${{ env.NODE_APP_URL }}"
+          PORTAL_URL="${{ env.NODE_APP_URL }}"
 
       # 3) Deploy the packaged docs folder
       - name: Deploy to Azure App Service
