@@ -132,14 +132,22 @@ jobs:
           # b) Merge App Settings (preserve any existing values on the app).
           $app = Get-AzWebApp -ResourceGroupName $env:RESOURCE_GROUP -Name $env:WEBAPP_NAME
           $settings = @{}
-          foreach ($s in $app.SiteConfig.AppSettings) { $settings[$s.Name] = $s.Value }
-          $settings['DB_HOST']         = $env:DB_HOST
-          $settings['DB_PORT']         = '3306'
-          $settings['DB_USER']         = $env:DB_USER
-          $settings['DB_PASSWORD']     = $env:DB_PASSWORD
-          $settings['DB_NAME']         = $env:DB_NAME
-          $settings['DB_SSL']          = 'true'
-          $settings['FRONTEND_ORIGIN'] = $env:NODE_APP_URL
+          if ($app.SiteConfig -and $app.SiteConfig.AppSettings) {
+            foreach ($s in $app.SiteConfig.AppSettings) {
+              if ($null -ne $s.Value) { $settings[$s.Name] = [string]$s.Value }
+            }
+          }
+          function Add-Setting($key, $value) {
+            if ([string]::IsNullOrEmpty($value)) { Write-Host "::warning::Skipping app setting '$key' (no value provided; set the matching repository secret)."; return }
+            $settings[$key] = [string]$value
+          }
+          Add-Setting 'DB_HOST'         $env:DB_HOST
+          Add-Setting 'DB_PORT'         '3306'
+          Add-Setting 'DB_USER'         $env:DB_USER
+          Add-Setting 'DB_PASSWORD'     $env:DB_PASSWORD
+          Add-Setting 'DB_NAME'         $env:DB_NAME
+          Add-Setting 'DB_SSL'          'true'
+          Add-Setting 'FRONTEND_ORIGIN' $env:NODE_APP_URL
           Set-AzWebApp -ResourceGroupName $env:RESOURCE_GROUP -Name $env:WEBAPP_NAME -AppSettings $settings | Out-Null
 
           # c) Zip the self-contained backend and deploy it (Kudu zip deploy).
@@ -217,9 +225,17 @@ jobs:
           # b) Merge App Settings (api-docs.php reads BASE_URL/PORTAL_URL via getenv()).
           $app = Get-AzWebApp -ResourceGroupName $env:RESOURCE_GROUP -Name $env:WEBAPP_NAME
           $settings = @{}
-          foreach ($s in $app.SiteConfig.AppSettings) { $settings[$s.Name] = $s.Value }
-          $settings['BASE_URL']   = $env:NODE_APP_URL
-          $settings['PORTAL_URL'] = $env:NODE_APP_URL
+          if ($app.SiteConfig -and $app.SiteConfig.AppSettings) {
+            foreach ($s in $app.SiteConfig.AppSettings) {
+              if ($null -ne $s.Value) { $settings[$s.Name] = [string]$s.Value }
+            }
+          }
+          function Add-Setting($key, $value) {
+            if ([string]::IsNullOrEmpty($value)) { Write-Host "::warning::Skipping app setting '$key' (no value provided)."; return }
+            $settings[$key] = [string]$value
+          }
+          Add-Setting 'BASE_URL'   $env:NODE_APP_URL
+          Add-Setting 'PORTAL_URL' $env:NODE_APP_URL
           Set-AzWebApp -ResourceGroupName $env:RESOURCE_GROUP -Name $env:WEBAPP_NAME -AppSettings $settings | Out-Null
 
           # c) Zip the packaged docs folder and deploy it.
