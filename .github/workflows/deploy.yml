@@ -1,0 +1,113 @@
+name: Deploy to Azure App Service
+
+# Continuous Deployment for Swiftcart.
+#   - Node.js app (Express + React build)  ->  App Service  vt-nodeapp-01
+#   - PHP documentation app                ->  App Service  vt-phpapp-02
+# Both apps live in resource group vt-nodejs-rg.
+#
+# Auth: OpenID Connect (OIDC) — no stored password. Uses the repository secrets
+#   AZURE_CLIENT_ID        (service principal / app registration client id)
+#   AZURE_TENANT_ID        (Entra ID tenant id)
+#   AZURE_SUBSCRIPTION_ID  (subscription that hosts the App Services)
+#
+# Trigger: manual (workflow_dispatch) by default so a push does not deploy
+# unexpectedly. To enable automatic deploys on every push to main, uncomment
+# the `push:` block below.
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+
+# OIDC needs permission to request a federated token.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  NODE_WEBAPP_NAME: vt-nodeapp-01
+  PHP_WEBAPP_NAME: vt-phpapp-02
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Node.js app  ->  vt-nodeapp-01
+  # ---------------------------------------------------------------------------
+  deploy-node:
+    name: Deploy Node app (vt-nodeapp-01)
+    runs-on: self-hosted
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 1) Build the React frontend
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      # 2) Install backend PRODUCTION deps and fold the React build into it,
+      #    so the deployed package is self-contained (no build on App Service).
+      - name: Install backend dependencies (production only)
+        working-directory: backend
+        run: npm ci --omit=dev
+
+      - name: Copy React build into backend/public
+        run: node scripts/copy-frontend.js
+
+      # 3) Log in to Azure with OIDC (short-lived token, no stored secret)
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # 4) Deploy the backend folder (Express serves the API + the React build)
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.NODE_WEBAPP_NAME }}
+          package: backend
+
+  # ---------------------------------------------------------------------------
+  # PHP documentation app  ->  vt-phpapp-02
+  # ---------------------------------------------------------------------------
+  deploy-php:
+    name: Deploy PHP docs app (vt-phpapp-02)
+    runs-on: self-hosted
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      # 1) Build the PHP app: package the single self-contained docs file as the
+      #    site root (index.php). Plain file copy — no PHP toolchain needed.
+      - name: Package the docs app (index.php)
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path docs-dist | Out-Null
+          Copy-Item frontend/public/api-docs.php docs-dist/index.php -Force
+
+      # 2) Log in to Azure with OIDC
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # 3) Deploy the packaged docs folder
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.PHP_WEBAPP_NAME }}
+          package: docs-dist
