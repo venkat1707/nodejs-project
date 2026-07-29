@@ -75,7 +75,28 @@ jobs:
       - name: Copy React build into backend/public
         run: node scripts/copy-frontend.js
 
-      # 3) Log in to Azure with OIDC (short-lived token, no stored secret)
+      # 3) Make sure the Azure CLI is available on this self-hosted runner.
+      #    azure/login and the App Settings step both shell out to `az`.
+      - name: Ensure Azure CLI is available
+        shell: powershell
+        run: |
+          $azWbin = "C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\wbin"
+          if (Get-Command az -ErrorAction SilentlyContinue) {
+            Write-Host "Azure CLI already on PATH."
+          } elseif (Test-Path "$azWbin\az.cmd") {
+            Write-Host "Azure CLI installed but not on PATH; adding $azWbin."
+            Add-Content -Path $env:GITHUB_PATH -Value $azWbin
+          } else {
+            Write-Host "Installing Azure CLI (one-time)..."
+            $ProgressPreference = 'SilentlyContinue'
+            $msi = Join-Path $env:TEMP 'AzureCLI.msi'
+            Invoke-WebRequest -Uri https://aka.ms/installazurecliwindows -OutFile $msi
+            Start-Process msiexec.exe -Wait -ArgumentList "/I `"$msi`" /quiet /norestart"
+            Remove-Item $msi -Force
+            Add-Content -Path $env:GITHUB_PATH -Value $azWbin
+          }
+
+      # 4) Log in to Azure with OIDC (short-lived token, no stored secret)
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
@@ -83,7 +104,7 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # 3b) Set the runtime App Settings (environment variables) the Express app
+      # 4b) Set the runtime App Settings (environment variables) the Express app
       #     reads from process.env. DB_* come from repository secrets (create:
       #     DB_HOST, DB_USER, DB_PASSWORD, DB_NAME). Non-secret values are literal.
       - name: Configure App Settings (vt-nodeapp-01)
@@ -132,7 +153,27 @@ jobs:
           New-Item -ItemType Directory -Force -Path docs-dist | Out-Null
           Copy-Item frontend/public/api-docs.php docs-dist/index.php -Force
 
-      # 2) Log in to Azure with OIDC
+      # 2) Make sure the Azure CLI is available on this self-hosted runner.
+      - name: Ensure Azure CLI is available
+        shell: powershell
+        run: |
+          $azWbin = "C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\wbin"
+          if (Get-Command az -ErrorAction SilentlyContinue) {
+            Write-Host "Azure CLI already on PATH."
+          } elseif (Test-Path "$azWbin\az.cmd") {
+            Write-Host "Azure CLI installed but not on PATH; adding $azWbin."
+            Add-Content -Path $env:GITHUB_PATH -Value $azWbin
+          } else {
+            Write-Host "Installing Azure CLI (one-time)..."
+            $ProgressPreference = 'SilentlyContinue'
+            $msi = Join-Path $env:TEMP 'AzureCLI.msi'
+            Invoke-WebRequest -Uri https://aka.ms/installazurecliwindows -OutFile $msi
+            Start-Process msiexec.exe -Wait -ArgumentList "/I `"$msi`" /quiet /norestart"
+            Remove-Item $msi -Force
+            Add-Content -Path $env:GITHUB_PATH -Value $azWbin
+          }
+
+      # 3) Log in to Azure with OIDC
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
@@ -140,7 +181,7 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # 2b) Set the docs' App Settings. api-docs.php reads BASE_URL/PORTAL_URL via
+      # 3b) Set the docs' App Settings. api-docs.php reads BASE_URL/PORTAL_URL via
       #     getenv() and falls back to localhost only when unset.
       - name: Configure App Settings (vt-phpapp-02)
         shell: powershell
