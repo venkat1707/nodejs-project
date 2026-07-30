@@ -169,10 +169,22 @@ jobs:
 
           # c) Zip the backend SOURCE (no node_modules) and deploy it. Oryx runs
           #    `npm install` on the server because of the setting above.
+          if (Test-Path 'backend\node_modules') { Remove-Item 'backend\node_modules' -Recurse -Force }
           $zip = Join-Path $env:RUNNER_TEMP 'node-app.zip'
           if (Test-Path $zip) { Remove-Item $zip -Force }
-          if (Test-Path 'backend\node_modules') { Remove-Item 'backend\node_modules' -Recurse -Force }
-          Compress-Archive -Path 'backend\*' -DestinationPath $zip -Force
+          # IMPORTANT: build the zip with forward-slash entry names. Windows
+          # PowerShell's Compress-Archive writes backslash paths, which Oryx/rsync
+          # on Linux treat as literal filenames ("public\index.html") and fail to
+          # copy, leaving wwwroot without server.js. Use .NET zip and normalize.
+          Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
+          $src = (Resolve-Path 'backend').Path
+          $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Create)
+          try {
+            Get-ChildItem -Path $src -Recurse -File | ForEach-Object {
+              $rel = $_.FullName.Substring($src.Length).TrimStart('\','/').Replace('\','/')
+              [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $_.FullName, $rel) | Out-Null
+            }
+          } finally { $archive.Dispose() }
           Publish-AzWebApp -ResourceGroupName $env:RESOURCE_GROUP -Name $env:WEBAPP_NAME -ArchivePath $zip -Force | Out-Null
           Write-Host "Deployed $env:WEBAPP_NAME."
 
@@ -296,6 +308,16 @@ jobs:
           # c) Zip the packaged docs folder and deploy it.
           $zip = Join-Path $env:RUNNER_TEMP 'php-docs.zip'
           if (Test-Path $zip) { Remove-Item $zip -Force }
-          Compress-Archive -Path 'docs-dist\*' -DestinationPath $zip -Force
+          # Use .NET zip with forward-slash entry names (Compress-Archive on
+          # Windows PowerShell writes backslash paths that break on Linux).
+          Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
+          $src = (Resolve-Path 'docs-dist').Path
+          $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Create)
+          try {
+            Get-ChildItem -Path $src -Recurse -File | ForEach-Object {
+              $rel = $_.FullName.Substring($src.Length).TrimStart('\','/').Replace('\','/')
+              [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $_.FullName, $rel) | Out-Null
+            }
+          } finally { $archive.Dispose() }
           Publish-AzWebApp -ResourceGroupName $env:RESOURCE_GROUP -Name $env:WEBAPP_NAME -ArchivePath $zip -Force | Out-Null
           Write-Host "Deployed $env:WEBAPP_NAME."
