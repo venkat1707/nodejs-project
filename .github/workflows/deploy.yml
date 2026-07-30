@@ -38,8 +38,9 @@ env:
   PHP_WEBAPP_NAME: vt-phpapp-02
   RESOURCE_GROUP: vt-nodejs-rg
   # Public URL of the Node app; used for the PHP docs' BASE_URL/PORTAL_URL and
-  # the Node app's own CORS FRONTEND_ORIGIN. Change if you use a custom domain.
-  NODE_APP_URL: https://vt-nodeapp-01.azurewebsites.net
+  # the Node app's own CORS FRONTEND_ORIGIN. This is the app's real default
+  # hostname (regional, with the unique suffix). Update if you add a custom domain.
+  NODE_APP_URL: https://vt-nodeapp-01-b9cgh7hddydnd4fe.australiaeast-01.azurewebsites.net
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -210,7 +211,10 @@ jobs:
           try {
             $tok = Get-AzAccessToken -ResourceUrl 'https://management.azure.com/'
             $token = if ($tok.Token -is [System.Security.SecureString]) { [System.Net.NetworkCredential]::new('', $tok.Token).Password } else { $tok.Token }
-            $base = "https://$($env:WEBAPP_NAME).scm.azurewebsites.net"
+            # Derive the Kudu/SCM host from the app's real default hostname
+            # (regional apps use <app>-<suffix>.scm.<region>-01.azurewebsites.net).
+            $scmHost = ($app.DefaultHostName -replace '^([^.]+)\.', '$1.scm.')
+            $base = "https://$scmHost"
             $hdr = @{ Authorization = "Bearer $token" }
             $list = Invoke-RestMethod -Uri "$base/api/vfs/LogFiles/" -Headers $hdr
             $docker = $list | Where-Object { $_.name -like '*docker*.log' } | Sort-Object mtime -Descending | Select-Object -First 1
