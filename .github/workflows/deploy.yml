@@ -151,6 +151,22 @@ jobs:
           Add-Setting 'SCM_DO_BUILD_DURING_DEPLOYMENT' 'true'
           Set-AzWebApp -ResourceGroupName $env:RESOURCE_GROUP -Name $env:WEBAPP_NAME -AppSettings $settings | Out-Null
 
+          # b2) Ensure the Linux runtime stack is Node (this is an Express app).
+          #     If the app was created with a non-Node stack, the container can
+          #     never start the server. Force NODE|20-lts when it isn't Node.
+          try {
+            $web = Get-AzResource -ResourceId "$($app.Id)/config/web" -ApiVersion 2022-03-01 -ErrorAction Stop
+            $current = [string]$web.Properties.linuxFxVersion
+            Write-Host "Current linuxFxVersion: '$current'"
+            if ($current -notlike 'NODE|*') {
+              Write-Host "Setting linuxFxVersion to 'NODE|20-lts'."
+              $web.Properties.linuxFxVersion = 'NODE|20-lts'
+              $web | Set-AzResource -ApiVersion 2022-03-01 -Force | Out-Null
+            }
+          } catch {
+            Write-Host "::warning::Could not read/set linuxFxVersion: $($_.Exception.Message)"
+          }
+
           # c) Zip the backend SOURCE (no node_modules) and deploy it. Oryx runs
           #    `npm install` on the server because of the setting above.
           $zip = Join-Path $env:RUNNER_TEMP 'node-app.zip'
@@ -159,6 +175,42 @@ jobs:
           Compress-Archive -Path 'backend\*' -DestinationPath $zip -Force
           Publish-AzWebApp -ResourceGroupName $env:RESOURCE_GROUP -Name $env:WEBAPP_NAME -ArchivePath $zip -Force | Out-Null
           Write-Host "Deployed $env:WEBAPP_NAME."
+
+      # 5) Diagnostics: print the runtime stack and the latest container log so
+      #    a startup failure is visible directly in this Actions run. Runs even
+      #    if a previous step failed.
+      - name: Show runtime config and container log (vt-nodeapp-01)
+        if: always()
+        shell: powershell
+        env:
+          RESOURCE_GROUP: ${{ env.RESOURCE_GROUP }}
+          WEBAPP_NAME: ${{ env.NODE_WEBAPP_NAME }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Import-Module Az.Accounts
+          Import-Module Az.Websites
+          try {
+            $app = Get-AzWebApp -ResourceGroupName $env:RESOURCE_GROUP -Name $env:WEBAPP_NAME
+            Write-Host "LinuxFxVersion : $($app.SiteConfig.LinuxFxVersion)"
+            Write-Host "AppCommandLine : $($app.SiteConfig.AppCommandLine)"
+            Write-Host "State          : $($app.State)"
+          } catch { Write-Host "Could not read site config: $($_.Exception.Message)" }
+          try {
+            $tok = Get-AzAccessToken -ResourceUrl 'https://management.azure.com/'
+            $token = if ($tok.Token -is [System.Security.SecureString]) { [System.Net.NetworkCredential]::new('', $tok.Token).Password } else { $tok.Token }
+            $base = "https://$($env:WEBAPP_NAME).scm.azurewebsites.net"
+            $hdr = @{ Authorization = "Bearer $token" }
+            $list = Invoke-RestMethod -Uri "$base/api/vfs/LogFiles/" -Headers $hdr
+            $docker = $list | Where-Object { $_.name -like '*docker*.log' } | Sort-Object mtime -Descending | Select-Object -First 1
+            if ($docker) {
+              Write-Host "----- $($docker.name) (last 120 lines) -----"
+              $content = Invoke-RestMethod -Uri $docker.href -Headers $hdr
+              ($content -split "`n" | Select-Object -Last 120) | ForEach-Object { Write-Host $_ }
+            } else {
+              Write-Host "No *docker*.log found. Files under LogFiles:"
+              $list | ForEach-Object { Write-Host " - $($_.name)" }
+            }
+          } catch { Write-Host "Failed to fetch container log from Kudu: $($_.Exception.Message)" }
 
   # ---------------------------------------------------------------------------
   # PHP documentation app  ->  vt-phpapp-02
