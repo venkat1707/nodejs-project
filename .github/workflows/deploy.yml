@@ -72,12 +72,10 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      # 2) Install backend PRODUCTION deps and fold the React build into it,
-      #    so the deployed package is self-contained (no build on App Service).
-      - name: Install backend dependencies (production only)
-        working-directory: backend
-        run: npm ci --omit=dev
-
+      # 2) Fold the React build into the backend's public folder. Backend npm
+      #    dependencies are NOT shipped — they are installed on Azure by Oryx
+      #    during deployment (SCM_DO_BUILD_DURING_DEPLOYMENT below), which builds
+      #    Linux-native modules and keeps the uploaded zip small and reliable.
       - name: Copy React build into backend/public
         run: node scripts/copy-frontend.js
 
@@ -148,11 +146,16 @@ jobs:
           Add-Setting 'DB_NAME'         $env:DB_NAME
           Add-Setting 'DB_SSL'          'true'
           Add-Setting 'FRONTEND_ORIGIN' $env:NODE_APP_URL
+          # Build backend deps on Azure (Oryx) during zip deploy, so node_modules
+          # is Linux-native and we don't ship it from a Windows runner.
+          Add-Setting 'SCM_DO_BUILD_DURING_DEPLOYMENT' 'true'
           Set-AzWebApp -ResourceGroupName $env:RESOURCE_GROUP -Name $env:WEBAPP_NAME -AppSettings $settings | Out-Null
 
-          # c) Zip the self-contained backend and deploy it (Kudu zip deploy).
+          # c) Zip the backend SOURCE (no node_modules) and deploy it. Oryx runs
+          #    `npm install` on the server because of the setting above.
           $zip = Join-Path $env:RUNNER_TEMP 'node-app.zip'
           if (Test-Path $zip) { Remove-Item $zip -Force }
+          if (Test-Path 'backend\node_modules') { Remove-Item 'backend\node_modules' -Recurse -Force }
           Compress-Archive -Path 'backend\*' -DestinationPath $zip -Force
           Publish-AzWebApp -ResourceGroupName $env:RESOURCE_GROUP -Name $env:WEBAPP_NAME -ArchivePath $zip -Force | Out-Null
           Write-Host "Deployed $env:WEBAPP_NAME."
